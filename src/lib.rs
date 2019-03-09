@@ -60,41 +60,43 @@ pub fn actor(input: TokenStream) -> TokenStream {
 
     format!(
         "
+        mod {name} {{
+        #[derive(Debug)]
         struct {name} {{
             running: bool,
             {data}
         }}
+        #[derive(Debug)]
         enum {name}Input {{
             {gets}
         }}
+        #[derive(Debug)]
         enum {name}Output {{
             {sends}
         }}
         impl {name} {{
-            fn on_init(&mut self) {{
-                self.running = true;
-                {on_init};
-            }}
             fn start() -> movie::Handle<
-                std::thread::JoinHandle,
-                std::sync::mpsc::Sender<{name}Output>,
-                std::sync::mpsc::Receiver<{name}Input>
+                std::thread::JoinHandle<()>,
+                {name}Input,
+                {name}Output
             >
             {{
-                let actor =
-                let on_message = |message: {name}Input| {{
-                    use {name}Output::*;
-                    match message {{
-                        {on_message}
-                    }}
-                }};
-                use std::sync::mpsc::channel;
-                use std::thread::{{spawn, sleep}};
-                use std::time::Duration;
-                let (tx_ota, rx_ota) = channel(); // owner-to-actor
-                let (tx_ato, rx_ato) = channel(); // actor-to-owner
-                let handle = spawn(move ||
-                    while self.running {{
+                let (tx_ota, rx_ota) = std::sync::mpsc::channel(); // owner-to-actor
+                let (tx_ato, rx_ato) = std::sync::mpsc::channel(); // actor-to-owner
+                let handle = std::thread::spawn(move || {{
+                    let mut actor = {name} {{
+                        running: true,
+                        {data}
+                    }};
+                    {{ {on_init} }};
+                    while actor.running {{
+                        let mut on_message = |message: {name}Input| {{
+                            use {name}Input::*;
+                            use {name}Output::*;
+                            match message {{
+                                {on_message}
+                            }}
+                        }};
                         while let Ok(message) = rx_ota.try_recv() {{
                             let reply: {name}Output = on_message(message);
                             tx_ato.send(reply).unwrap();
@@ -103,17 +105,22 @@ pub fn actor(input: TokenStream) -> TokenStream {
                         if let Some(reply) = reply {{
                             tx_ato.send(reply).unwrap();
                         }}
-                        sleep(Duration::from_millis(4));
-                        // 4ms is minimum on some Linux systems
+
+                        // sleep for 4 ms before polling or ticking
+                        // 4 ms is minimum on some Linux systems
                         // so it was chosen for compatibility
+                        use std::thread::{{spawn, sleep}};
+                        use std::time::Duration;
+                        sleep(Duration::from_millis(4));
                     }}
-                );
+                }});
                 movie::Handle {{
                     join_handle: handle,
                     tx: tx_ota,
                     rx: rx_ato,
                 }}
             }}
+        }}
         }}",
         name = attrs["name"],
         data = attrs["data"],
