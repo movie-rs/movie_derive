@@ -52,17 +52,7 @@ pub fn actor(input: TokenStream) -> TokenStream {
         panic!("Actor must have on_message handler");
     }
 
-    // prepare attrs[config] for merge with attrs[data]
-    // do not move below, as attrs[config] should stay empty if it was empty before
-    // (instead of becoming ",")
-    if attrs.contains_key("config") && !attrs["config"].ends_with(',') {
-        let mut new_config = attrs["config"].to_string();
-        new_config.push(',');
-        attrs.insert("config", new_config);
-    }
-
     // assign default values for missing optional supported attrs
-    attrs.entry("config").or_insert("".to_string());
     attrs.entry("data").or_insert("".to_string());
     attrs.entry("on_init").or_insert("".to_string());
 
@@ -72,7 +62,6 @@ pub fn actor(input: TokenStream) -> TokenStream {
         "
         struct {name} {{
             running: bool,
-            {config}
             {data}
         }}
         enum {name}Input {{
@@ -127,7 +116,6 @@ pub fn actor(input: TokenStream) -> TokenStream {
             }}
         }}",
         name = attrs["name"],
-        config = attrs["config"],
         data = attrs["data"],
         gets = attrs["gets"],
         sends = attrs["sends"],
