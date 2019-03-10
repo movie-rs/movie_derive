@@ -28,7 +28,9 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
         let search_str = format!("{} :", attr);
         let pos = input.find(&search_str);
         if let Some(pos) = pos {
-            locations.push((pos, attr, pos + search_str.len()));
+            // Add 2 as we don't search for whitespace before and after
+            // as it can be either \n or space
+            locations.push((pos - 1, attr, pos + search_str.len() + 1));
             return;
         }
     };
