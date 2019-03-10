@@ -111,7 +111,7 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
             {input}
         }}
         impl Actor {{
-            pub fn start(mut self) -> movie_utils::Handle<
+            pub fn start(mut self) -> movie::Handle<
                 std::thread::JoinHandle<()>,
                 Input,
                 >
