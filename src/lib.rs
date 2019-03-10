@@ -1,13 +1,17 @@
+//! `movie_derive` - crate containing procedural macros.
+
 extern crate proc_macro;
 use proc_macro::TokenStream;
 
 use std::collections::HashMap;
 
 #[proc_macro]
+/// Macro that generates module `ActorName`, which contains structs `Actor` and `Input`.
 pub fn actor(input: TokenStream) -> TokenStream {
     actor_internal(input, false)
 }
 #[proc_macro]
+/// This version of `actor!` will `eprintln!` how it sees the input and what code it generated.
 pub fn actor_dbg(input: TokenStream) -> TokenStream {
     actor_internal(input, true)
 }
@@ -44,9 +48,10 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
     try_find("data");
     try_find("on_init");
     try_find("on_message");
-    try_find("tick_rate");
+    try_find("tick_interval");
     try_find("on_tick");
     try_find("on_stop");
+    try_find("custom_code");
     locations.sort_unstable();
 
     // attrs = {
@@ -81,9 +86,10 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
     // Assign default values for missing optional supported attrs
     attrs.entry("data").or_insert("".to_string());
     attrs.entry("on_init").or_insert("".to_string());
-    attrs.entry("tick_rate").or_insert("10".to_string());
+    attrs.entry("tick_interval").or_insert("100".to_string());
     attrs.entry("on_tick").or_insert("".to_string());
     attrs.entry("on_stop").or_insert("".to_string());
+    attrs.entry("custom_code").or_insert("".to_string());
 
     // Prepare strings used later
     let input_derive = if attrs.contains_key("input_derive") {
@@ -96,6 +102,7 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
     let output = format!(
         "
         mod {name} {{
+        {custom_code}
         pub struct Actor {{
             {data}
         }}
@@ -104,7 +111,7 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
             {input}
         }}
         impl Actor {{
-            pub fn start(mut self) -> movie::Handle<
+            pub fn start(mut self) -> movie_utils::Handle<
                 std::thread::JoinHandle<()>,
                 Input,
                 >
@@ -128,20 +135,17 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
                             on_message(message);
                         }}
                         if let Ok(_) = rx_kill.try_recv() {{
+                            running = false;
                             {{
                                 {on_stop}
                             }};
-                            running = false;
                         }}
                         {{
                             {on_tick}
                         }};
-                        // sleep for 4 ms before polling or ticking
-                        // 4 ms is minimum on some Linux systems
-                        // so it was chosen for compatibility
                         use std::thread::sleep;
                         use std::time::Duration;
-                        sleep(Duration::from_millis(1000 / {tick_rate}));
+                        sleep(Duration::from_millis({tick_interval}));
                     }}
                 }});
                 movie::Handle {{
@@ -158,15 +162,16 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
         data = attrs["data"],
         on_init = attrs["on_init"],
         on_message = attrs["on_message"],
-        tick_rate = attrs["tick_rate"],
+        tick_interval = attrs["tick_interval"],
         on_tick = attrs["on_tick"],
         on_stop = attrs["on_stop"],
+        custom_code = attrs["custom_code"],
         // prepared strings
         input_derive = input_derive,
     );
     if debug {
-        println!("Generated code:");
-        println!("{}", output);
+        eprintln!("Generated code:");
+        eprintln!("{}", output);
     }
     output.parse().unwrap()
 }

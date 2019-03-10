@@ -1,5 +1,5 @@
 [package]
-name = "movie-derive"
+name = "movie_derive"
 version = "0.1.0"
 authors = ["Paweł Zmarzły <pawo2500@gmail.com>"]
 edition = "2018"
@@ -8,5 +8,4 @@ edition = "2018"
 proc-macro = true
 
 [dependencies]
-serde_scan = "0.3.2"
-movie = {path = "../movie"}
+movie_utils = {path = "../movie_utils"}
