@@ -20,18 +20,23 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
     // (start, name, start_without_name)
     let mut locations = vec![(0, "name", 0)];
     let mut try_find = |attr| {
-        // Any of the following may happen:
-        // - "\ninput :\n"
-        // - " input :\n"
-        // - "\ninput : "
-        // - " input : "
-        let search_str = format!("{} :", attr);
-        let pos = input.find(&search_str);
-        if let Some(pos) = pos {
-            // Add 2 as we don't search for whitespace before and after
-            // as it can be either \n or space
-            locations.push((pos - 1, attr, pos + search_str.len() + 1));
-            return;
+        // Any of the following cases may happen:
+        let search_strings = &[
+            format!("\n{} :\n", attr),
+            format!(" {} :\n", attr),
+            format!("\n{} : ", attr),
+            format!(" {} : ", attr),
+            format!("\n{}\n:\n", attr),
+            format!(" {}\n:\n", attr),
+            format!("\n{}\n: ", attr),
+            format!(" {}\n: ", attr),
+        ];
+        for search_str in search_strings {
+            let pos = input.find(search_str);
+            if let Some(pos) = pos {
+                locations.push((pos, attr, pos + search_str.len()));
+                return;
+            }
         }
     };
     try_find("input");
@@ -39,6 +44,9 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
     try_find("data");
     try_find("on_init");
     try_find("on_message");
+    try_find("tick_rate");
+    try_find("on_tick");
+    try_find("on_stop");
     locations.sort_unstable();
 
     // attrs = {
@@ -72,14 +80,13 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
 
     // Check for presence of attributes that change code flow
     let has_data = attrs.contains_key("data");
-    // TODO: "()" turns into "(  )". This may change in the future, so a better
-    // way to determine this should be implemented
-    let accepts_tick =
-        attrs["input"].find(", Tick , ").is_some() || attrs["input"].find(", Tick ,\n").is_some();
 
     // Assign default values for missing optional supported attrs
     attrs.entry("data").or_insert("".to_string());
     attrs.entry("on_init").or_insert("".to_string());
+    attrs.entry("tick_rate").or_insert("10".to_string());
+    attrs.entry("on_tick").or_insert("".to_string());
+    attrs.entry("on_stop").or_insert("".to_string());
 
     // Prepare strings used later
     let input_derive = if attrs.contains_key("input_derive") {
@@ -93,7 +100,6 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
         "
         mod {name} {{
         pub struct Actor {{
-            running: bool,
             data: Data,
         }}
         pub struct Data {{
@@ -117,26 +123,32 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
                     }};
                     {optional_default_data}
                     let mut actor = Actor {{
-                        running: true,
                         data,
                     }};
-                    while actor.running {{
+                    let mut running = true;
+                    while running {{
                         let mut on_message = |message: Input| {{
                             use Input::*;
                             match message {{
+                                Stop => {{
                                 {on_message}
                             }};
                         }};
                         while let Ok(message) = rx_ota.try_recv() {{
                             on_message(message);
                         }}
-                        {optional_tick_handler};
+                        if let Ok(_) = rx_kill.try_recv() {{
+                            actor.running = false;
+                        }}
+                        {{
+                            {on_tick}
+                        }};
                         // sleep for 4 ms before polling or ticking
                         // 4 ms is minimum on some Linux systems
                         // so it was chosen for compatibility
                         use std::thread::sleep;
                         use std::time::Duration;
-                        sleep(Duration::from_millis(4));
+                        sleep(Duration::from_millis(1000 / {tick_rate}));
                     }}
                 }});
                 movie::Handle {{
@@ -152,14 +164,12 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
         data = attrs["data"],
         on_init = attrs["on_init"],
         on_message = attrs["on_message"],
+        tick_rate = attrs["tick_rate"],
+        on_tick = attrs["on_tick"],
+        on_stop = attrs["on_stop"],
         // prepared strings
         input_derive = input_derive,
         // conditional code
-        optional_tick_handler = if accepts_tick {
-            "on_message(Input::Tick)"
-        } else {
-            ""
-        },
         optional_data_argument = if has_data { "data: Data" } else { "" },
         optional_default_data = if has_data { "" } else { "let data = Data {};" },
     );
