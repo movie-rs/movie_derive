@@ -12,11 +12,21 @@ pub fn actor_dbg(input: TokenStream) -> TokenStream {
     actor_internal(input, true)
 }
 
-// input: "SimplestActor gets : Ping , sends : Pong , on_message : Ping => Pong ,"
+#[cfg(debug)]
+#[allow(dead_code)]
+fn unwrap<T, E>(res: Result<T, E>) {
+    res.unwrap();
+}
+#[cfg(not(debug))]
+#[allow(unused_variables)]
+#[allow(dead_code)]
+fn unwrap<T, E>(_: Result<T, E>) {}
+
+// Input: "SimplestActor gets : Ping , sends : Pong , on_message : Ping => Pong ,"
 fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
     let input = input.to_string();
 
-    // locate attributes inside input string
+    // Locate attributes inside input string
     // (start, name, start_without_name)
     let mut locations = vec![(0, "name", 0)];
     let mut try_find = |attr| {
@@ -25,7 +35,7 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
         if let Some(pos) = pos {
             locations.push((pos, attr, pos + search_str.len()));
         } else {
-            // TODO: figure out why in StreamParsingActor example
+            // TODO: Figure out why in StreamParsingActor example
             // spaces are replaced by newlines
             let search_str = format!(" {} :\n", attr);
             let pos = input.find(&search_str);
@@ -35,7 +45,9 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
         }
     };
     try_find("gets");
+    try_find("gets_derive");
     try_find("sends");
+    try_find("sends_derive");
     try_find("data");
     try_find("on_init");
     try_find("on_message");
@@ -52,9 +64,9 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
     // (start, name, start_without_name)
     for i in 0..locations.len() {
         let value = if i == locations.len() - 1 {
-            &input[locations[i].2..] // last segment
+            &input[locations[i].2..] // Last segment
         } else {
-            &input[locations[i].2..locations[i + 1].0] // start of next segment means this one ends
+            &input[locations[i].2..locations[i + 1].0] // Start of next segment means this one ends
         };
         attrs.insert(locations[i].1, value.to_string());
     }
@@ -63,7 +75,7 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
         dbg!(&attrs);
     }
 
-    // check for missing required attrs
+    // Check for missing required attrs
     if !attrs.contains_key("gets") {
         panic!("Actor must accept some input (consider accepting Tick or Stop) - define enum types in `gets`");
     }
@@ -74,32 +86,54 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
         panic!("Actor must have on_message handler");
     }
 
+    // Check for presence of attributes that change code flow
     let has_data = attrs.contains_key("data");
-    let tick =
+    // TODO: "()" turns into "(  )". This may change in the future, so a better
+    // way to determine this should be implemented
+    let has_empty_gets_derive = attrs.contains_key("gets_derive") && attrs["gets_derive"] == "(  )";
+    let has_empty_sends_derive =
+        attrs.contains_key("sends_derive") && attrs["sends_derive"] == "(  )";
+    let accepts_tick =
         attrs["gets"].find(", Tick , ").is_some() || attrs["gets"].find(", Tick ,\n").is_some();
 
-    // assign default values for missing optional supported attrs
+    // Assign default values for missing optional supported attrs
     attrs.entry("data").or_insert("".to_string());
     attrs.entry("on_init").or_insert("".to_string());
+    attrs
+        .entry("gets_derive")
+        .or_insert("(Debug, PartialEq)".to_string());
+    attrs
+        .entry("sends_derive")
+        .or_insert("(Debug, PartialEq)".to_string());
 
-    // TODO: consider rewriting to quote!()
+    // Prepare some strings used later
+    let gets_derive = if has_empty_gets_derive {
+        "".to_string()
+    } else {
+        format!("#[derive{}]", attrs["gets_derive"])
+    };
+    let sends_derive = if has_empty_sends_derive {
+        "".to_string()
+    } else {
+        format!("#[derive{}]", attrs["sends_derive"])
+    };
+
+    // TODO: Consider rewriting to quote!()
     format!(
         "
         mod {name} {{
-        #[derive(Debug)]
         pub struct Actor {{
             running: bool,
             data: Data,
         }}
-        #[derive(Debug)]
         pub struct Data {{
             {data}
         }}
-        #[derive(Debug, PartialEq)]
+        {gets_derive}
         pub enum Input {{
             {gets}
         }}
-        #[derive(Debug, PartialEq)]
+        {sends_derive}
         pub enum Output {{
             {sends}
         }}
@@ -154,13 +188,18 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
             }}
         }}
         }}",
+        // attrs
         name = attrs["name"],
         gets = attrs["gets"],
         sends = attrs["sends"],
         data = attrs["data"],
         on_init = attrs["on_init"],
         on_message = attrs["on_message"],
-        optional_tick_handler = if tick {
+        // prepared strings
+        gets_derive = gets_derive,
+        sends_derive = sends_derive,
+        // conditional code
+        optional_tick_handler = if accepts_tick {
             "Some(on_message(Input::Tick))"
         } else {
             "None"
