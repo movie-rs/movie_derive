@@ -12,16 +12,6 @@ pub fn actor_dbg(input: TokenStream) -> TokenStream {
     actor_internal(input, true)
 }
 
-#[cfg(debug)]
-#[allow(dead_code)]
-fn unwrap<T, E>(res: Result<T, E>) {
-    res.unwrap();
-}
-#[cfg(not(debug))]
-#[allow(unused_variables)]
-#[allow(dead_code)]
-fn unwrap<T, E>(_: Result<T, E>) {}
-
 // Input: "SimplestActor gets : Ping , sends : Pong , on_message : Ping => Pong ,"
 fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
     let input = input.to_string();
