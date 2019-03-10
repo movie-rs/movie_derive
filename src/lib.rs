@@ -78,9 +78,6 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
         panic!("Actor must have on_message handler");
     }
 
-    // Check for presence of attributes that change code flow
-    let has_data = attrs.contains_key("data");
-
     // Assign default values for missing optional supported attrs
     attrs.entry("data").or_insert("".to_string());
     attrs.entry("on_init").or_insert("".to_string());
@@ -100,9 +97,6 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
         "
         mod {name} {{
         pub struct Actor {{
-            data: Data,
-        }}
-        pub struct Data {{
             {data}
         }}
         {input_derive}
@@ -110,27 +104,23 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
             {input}
         }}
         impl Actor {{
-            pub fn start({optional_data_argument}) -> movie::Handle<
+            pub fn start(mut self) -> movie::Handle<
                 std::thread::JoinHandle<()>,
                 Input,
                 >
             {{
-                let (tx_ota, rx_ota) = std::sync::mpsc::channel(); // owner-to-actor
+                let (tx_ota, rx_ota) = std::sync::mpsc::channel(); // owner-to-actor data
+                let (tx_kill, rx_kill) = std::sync::mpsc::channel(); // owner-to-actor stop requests
                 let handle = std::thread::spawn(move || {{
                     {{
                         // newline in case on_init ends with a comment
                         {on_init}
-                    }};
-                    {optional_default_data}
-                    let mut actor = Actor {{
-                        data,
                     }};
                     let mut running = true;
                     while running {{
                         let mut on_message = |message: Input| {{
                             use Input::*;
                             match message {{
-                                Stop => {{
                                 {on_message}
                             }};
                         }};
@@ -138,7 +128,10 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
                             on_message(message);
                         }}
                         if let Ok(_) = rx_kill.try_recv() {{
-                            actor.running = false;
+                            {{
+                                {on_stop}
+                            }};
+                            running = false;
                         }}
                         {{
                             {on_tick}
@@ -154,6 +147,7 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
                 movie::Handle {{
                     join_handle: handle,
                     tx: tx_ota,
+                    kill: tx_kill,
                 }}
             }}
         }}
@@ -169,9 +163,6 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
         on_stop = attrs["on_stop"],
         // prepared strings
         input_derive = input_derive,
-        // conditional code
-        optional_data_argument = if has_data { "data: Data" } else { "" },
-        optional_default_data = if has_data { "" } else { "let data = Data {};" },
     );
     if debug {
         println!("Generated code:");
