@@ -12,7 +12,7 @@ pub fn actor_dbg(input: TokenStream) -> TokenStream {
     actor_internal(input, true)
 }
 
-// Input: "SimplestActor gets : Ping , sends : Pong , on_message : Ping => Pong ,"
+// Input: "SimplestActor input : Ping , on_message : Ping => Pong ,"
 fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
     let input = input.to_string();
 
@@ -20,34 +20,29 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
     // (start, name, start_without_name)
     let mut locations = vec![(0, "name", 0)];
     let mut try_find = |attr| {
-        let search_str = format!(" {} : ", attr);
+        // Any of the following may happen:
+        // - "\ninput :\n"
+        // - " input :\n"
+        // - "\ninput : "
+        // - " input : "
+        let search_str = format!("{} :", attr);
         let pos = input.find(&search_str);
         if let Some(pos) = pos {
             locations.push((pos, attr, pos + search_str.len()));
-        } else {
-            // TODO: Figure out why in StreamParsingActor example
-            // spaces are replaced by newlines
-            let search_str = format!(" {} :\n", attr);
-            let pos = input.find(&search_str);
-            if let Some(pos) = pos {
-                locations.push((pos, attr, pos + search_str.len()));
-            }
+            return;
         }
     };
-    try_find("gets");
-    try_find("gets_derive");
-    try_find("sends");
-    try_find("sends_derive");
+    try_find("input");
+    try_find("input_derive");
     try_find("data");
     try_find("on_init");
     try_find("on_message");
     locations.sort_unstable();
 
     // attrs = {
+    //     "input": "Ping ,"
     //     "name": "SimplestActor",
-    //     "sends": "Pong ,",
     //     "on_message": "Ping => Pong ,",
-    //     "gets": "Ping ,"
     // }
     let mut attrs: HashMap<&str, String> = HashMap::new();
 
@@ -66,11 +61,8 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
     }
 
     // Check for missing required attrs
-    if !attrs.contains_key("gets") {
-        panic!("Actor must accept some input (consider accepting Tick or Stop) - define enum types in `gets`");
-    }
-    if !attrs.contains_key("sends") {
-        panic!("Actor must send some message (consider sending Ok) - define enum types in `sends`");
+    if !attrs.contains_key("input") {
+        panic!("Actor must accept some input (consider accepting Tick or Stop) - define enum types in `input`");
     }
     if !attrs.contains_key("on_message") {
         panic!("Actor must have on_message handler");
@@ -80,36 +72,22 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
     let has_data = attrs.contains_key("data");
     // TODO: "()" turns into "(  )". This may change in the future, so a better
     // way to determine this should be implemented
-    let has_empty_gets_derive = attrs.contains_key("gets_derive") && attrs["gets_derive"] == "(  )";
-    let has_empty_sends_derive =
-        attrs.contains_key("sends_derive") && attrs["sends_derive"] == "(  )";
     let accepts_tick =
-        attrs["gets"].find(", Tick , ").is_some() || attrs["gets"].find(", Tick ,\n").is_some();
+        attrs["input"].find(", Tick , ").is_some() || attrs["input"].find(", Tick ,\n").is_some();
 
     // Assign default values for missing optional supported attrs
     attrs.entry("data").or_insert("".to_string());
     attrs.entry("on_init").or_insert("".to_string());
-    attrs
-        .entry("gets_derive")
-        .or_insert("(Debug, PartialEq)".to_string());
-    attrs
-        .entry("sends_derive")
-        .or_insert("(Debug, PartialEq)".to_string());
 
-    // Prepare some strings used later
-    let gets_derive = if has_empty_gets_derive {
-        "".to_string()
+    // Prepare strings used later
+    let input_derive = if attrs.contains_key("input_derive") {
+        format!("#[derive({})]", attrs["input_derive"])
     } else {
-        format!("#[derive{}]", attrs["gets_derive"])
-    };
-    let sends_derive = if has_empty_sends_derive {
         "".to_string()
-    } else {
-        format!("#[derive{}]", attrs["sends_derive"])
     };
 
     // TODO: Consider rewriting to quote!()
-    format!(
+    let output = format!(
         "
         mod {name} {{
         pub struct Actor {{
@@ -119,23 +97,17 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
         pub struct Data {{
             {data}
         }}
-        {gets_derive}
+        {input_derive}
         pub enum Input {{
-            {gets}
-        }}
-        {sends_derive}
-        pub enum Output {{
-            {sends}
+            {input}
         }}
         impl Actor {{
             pub fn start({optional_data_argument}) -> movie::Handle<
                 std::thread::JoinHandle<()>,
                 Input,
-                Output
                 >
             {{
                 let (tx_ota, rx_ota) = std::sync::mpsc::channel(); // owner-to-actor
-                let (tx_ato, rx_ato) = std::sync::mpsc::channel(); // actor-to-owner
                 let handle = std::thread::spawn(move || {{
                     {{
                         // newline in case on_init ends with a comment
@@ -149,23 +121,18 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
                     while actor.running {{
                         let mut on_message = |message: Input| {{
                             use Input::*;
-                            use Output::*;
                             match message {{
                                 {on_message}
-                            }}
+                            }};
                         }};
                         while let Ok(message) = rx_ota.try_recv() {{
-                            let reply: Output = on_message(message);
-                            tx_ato.send(reply).unwrap();
+                            on_message(message);
                         }}
-                        let reply: Option<Output> = {optional_tick_handler};
-                        if let Some(reply) = reply {{
-                            tx_ato.send(reply).unwrap();
-                        }}
+                        {optional_tick_handler};
                         // sleep for 4 ms before polling or ticking
                         // 4 ms is minimum on some Linux systems
                         // so it was chosen for compatibility
-                        use std::thread::{{spawn, sleep}};
+                        use std::thread::sleep;
                         use std::time::Duration;
                         sleep(Duration::from_millis(4));
                     }}
@@ -173,30 +140,30 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
                 movie::Handle {{
                     join_handle: handle,
                     tx: tx_ota,
-                    rx: rx_ato,
                 }}
             }}
         }}
         }}",
         // attrs
         name = attrs["name"],
-        gets = attrs["gets"],
-        sends = attrs["sends"],
+        input = attrs["input"],
         data = attrs["data"],
         on_init = attrs["on_init"],
         on_message = attrs["on_message"],
         // prepared strings
-        gets_derive = gets_derive,
-        sends_derive = sends_derive,
+        input_derive = input_derive,
         // conditional code
         optional_tick_handler = if accepts_tick {
-            "Some(on_message(Input::Tick))"
+            "on_message(Input::Tick)"
         } else {
-            "None"
+            ""
         },
         optional_data_argument = if has_data { "data: Data" } else { "" },
         optional_default_data = if has_data { "" } else { "let data = Data {};" },
-    )
-    .parse()
-    .unwrap()
+    );
+    if debug {
+        println!("Generated code:");
+        println!("{}", output);
+    }
+    output.parse().unwrap()
 }
