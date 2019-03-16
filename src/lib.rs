@@ -78,18 +78,12 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
         dbg!(&attrs);
     }
 
-    // Check for missing required attrs
-    if !attrs.contains_key("input") {
-        panic!("Actor must accept some input (consider accepting Tick or Stop) - define enum types in `input`");
-    }
-    if !attrs.contains_key("on_message") {
-        panic!("Actor must have on_message handler");
-    }
-
     // Assign default values for missing optional supported attrs
     attrs.entry("public_visibility").or_insert("".to_string());
+    attrs.entry("input").or_insert("".to_string());
     attrs.entry("data").or_insert("".to_string());
     attrs.entry("on_init").or_insert("".to_string());
+    attrs.entry("on_message").or_insert("".to_string());
     attrs.entry("tick_interval").or_insert("100".to_string());
     attrs.entry("on_tick").or_insert("".to_string());
     attrs.entry("on_stop").or_insert("".to_string());
