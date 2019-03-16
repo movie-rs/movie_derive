@@ -125,14 +125,11 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
                     }};
                     let mut running = true;
                     while running {{
-                        let mut on_message = |message: Input| {{
+                        while let Ok(message) = rx_ota.try_recv() {{
                             use Input::*;
                             match message {{
                                 {on_message}
                             }};
-                        }};
-                        while let Ok(message) = rx_ota.try_recv() {{
-                            on_message(message);
                         }}
                         if let Ok(_) = rx_kill.try_recv() {{
                             running = false;
