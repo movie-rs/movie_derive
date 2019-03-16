@@ -154,6 +154,51 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
                     kill: tx_kill,
                 }}
             }}
+            // The goal is to have:
+            //
+            // pub fn start_via<T, U, V>(mut self, spawner: T) -> movie::Handle<U, Input>
+            // where
+            //     T: FnOnce(V) -> movie::Handle<U, Input>,
+            //     V: FnOnce() -> (),
+            //     V: Send + 'static,
+            //     U: movie_utils::JoinableHandle
+            // {{
+            //     let (tx_ota, rx_ota) = std::sync::mpsc::channel(); // owner-to-actor data
+            //     let (tx_kill, rx_kill) = std::sync::mpsc::channel(); // owner-to-actor stop requests
+            //     spawner(move || {{
+            //         // move code from old start() here
+            //     }})
+            // }}
+            // pub fn start(mut self) -> movie::Handle<
+            //     std::thread::JoinHandle<()>,
+            //     Input,
+            //     >
+            // {{
+            //     self.start_via(|f| {{
+            //         std::thread::spawn(f);
+            //     }})
+            // }}
+            //
+            // But it fails with:
+            //
+            // expected type parameter, found closure
+            // note: expected type `V`
+            //   found type `[closure@tests/advanced.rs:4:1: 40:2]`
+            //
+            // Despite using signature similar to std::thread::spawn in order to accept closure.
+            // This does not work either:
+            //
+            // pub fn start_via<T, V>(mut self, spawner: T)
+            // where
+            //     T: FnOnce(V) -> (),
+            //     V: FnOnce() -> (),
+            //     T: Send + 'static,
+            //     V: Send + 'static
+            // {{
+            //     spawner(move || {{
+            //         ();
+            //     }});
+            // }}
         }}
 
         }}",
