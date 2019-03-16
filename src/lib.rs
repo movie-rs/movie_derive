@@ -128,10 +128,9 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
                 let (tx_ota, rx_ota) = std::sync::mpsc::channel(); // owner-to-actor data
                 let (tx_kill, rx_kill) = std::sync::mpsc::channel(); // owner-to-actor stop requests
                 let handle = {spawner}(move || {{
-                    {{
-                        // newline in case on_init ends with a comment
-                        {on_init}
-                    }};
+                    {on_init} // on_init is not separated as this is the simplest way to
+                              // implement thread-local data. This may change in later (breaking)
+                              // updates
                     let mut running = true;
                     while running {{
                         while let Ok(message) = rx_ota.try_recv() {{
