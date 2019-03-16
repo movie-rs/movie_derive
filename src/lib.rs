@@ -51,6 +51,8 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
     try_find("tick_interval");
     try_find("on_tick");
     try_find("on_stop");
+    try_find("spawner");
+    try_find("spawner_return_type");
     try_find("custom_code");
     locations.sort_unstable();
 
@@ -92,6 +94,9 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
     attrs
         .entry("spawner")
         .or_insert("std::thread::spawn".to_string());
+    attrs
+        .entry("spawner_return_type")
+        .or_insert("std::thread::JoinHandle<()>".to_string());
     attrs.entry("custom_code").or_insert("".to_string());
 
     // Prepare strings used later
@@ -117,10 +122,7 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
         }}
 
         impl Actor {{
-            pub fn start(mut self) -> movie::Handle<
-                std::thread::JoinHandle<()>,
-                Input,
-                >
+            pub fn start(mut self) -> movie::Handle<{spawner_return_type}, Input>
             {{
                 let (tx_ota, rx_ota) = std::sync::mpsc::channel(); // owner-to-actor data
                 let (tx_kill, rx_kill) = std::sync::mpsc::channel(); // owner-to-actor stop requests
@@ -170,6 +172,7 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
         on_tick = attrs["on_tick"],
         on_stop = attrs["on_stop"],
         spawner = attrs["spawner"],
+        spawner_return_type = attrs["spawner_return_type"],
         custom_code = attrs["custom_code"],
         // prepared strings
         input_derive = input_derive,
