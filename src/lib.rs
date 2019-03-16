@@ -103,13 +103,16 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
         "
         mod {name} {{
         {custom_code}
+
         pub struct Actor {{
             {data}
         }}
+
         {input_derive}
         pub enum Input {{
             {input}
         }}
+
         impl Actor {{
             pub fn start(mut self) -> movie::Handle<
                 std::thread::JoinHandle<()>,
@@ -152,6 +155,7 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
                 }}
             }}
         }}
+
         }}",
         // attrs
         name = attrs["name"],
