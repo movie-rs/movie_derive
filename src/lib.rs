@@ -161,6 +161,8 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
             }}
         }}
 
+        pub type Handle = movie::Handle<{spawner_return_type}, Input>;
+
         }}",
         // attrs
         name = attrs["name"],
