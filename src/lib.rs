@@ -43,6 +43,7 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
             }
         }
     };
+    try_find("public_visibility");
     try_find("input");
     try_find("input_derive");
     try_find("data");
@@ -86,6 +87,7 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
     }
 
     // Assign default values for missing optional supported attrs
+    attrs.entry("public_visibility").or_insert("".to_string());
     attrs.entry("data").or_insert("".to_string());
     attrs.entry("on_init").or_insert("".to_string());
     attrs.entry("tick_interval").or_insert("100".to_string());
@@ -100,6 +102,11 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
     attrs.entry("custom_code").or_insert("".to_string());
 
     // Prepare strings used later
+    let public_visibility = if attrs["public_visibility"].contains("true") {
+        "pub".to_string()
+    } else {
+        "".to_string()
+    };
     let input_derive = if attrs.contains_key("input_derive") {
         format!("#[derive({})]", attrs["input_derive"])
     } else {
@@ -109,7 +116,7 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
     // TODO: Consider rewriting to quote!()
     let output = format!(
         "
-        mod {name} {{
+        {public_visibility} mod {name} {{
         {custom_code}
 
         pub struct Actor {{
@@ -177,6 +184,7 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
         spawner_return_type = attrs["spawner_return_type"],
         custom_code = attrs["custom_code"],
         // prepared strings
+        public_visibility = public_visibility,
         input_derive = input_derive,
     );
     if debug {
