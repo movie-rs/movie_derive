@@ -111,6 +111,8 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
     let output = format!(
         "
         {public_visibility} mod {name} {{
+        use super::*;
+
         {custom_code}
 
         pub struct Actor {{
