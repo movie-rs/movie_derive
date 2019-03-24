@@ -20,10 +20,34 @@ pub fn actor_dbg(input: TokenStream) -> TokenStream {
 fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
     let input = input.to_string();
 
+    if debug {
+        eprintln!("Input:");
+        eprintln!("{}", input);
+    }
+
+    // PART ONE
     // Locate attributes inside input string
-    // (start, name, start_without_name)
+
+    let supported_attributes = vec![
+        // attr name, default value
+        ("public_visibility", ""),
+        ("input", ""),
+        ("input_derive", ""),
+        ("data", ""),
+        ("on_init", ""),
+        ("on_message", ""),
+        ("tick_interval", "100"),
+        ("on_tick", ""),
+        ("on_stop", ""),
+        ("spawner", "std::thread::spawn"),
+        ("spawner_return_type", "std::thread::JoinHandle<()>"),
+        ("custom_code", ""),
+    ];
+
+    // locations = [(start, attr name, start of content), ...]
     let mut locations = vec![(0, "name", 0)];
-    let mut try_find = |attr| {
+    for attr in &supported_attributes {
+        let attr = attr.0;
         // Any of the following cases may happen:
         let search_strings = &[
             format!("\n{} :\n", attr),
@@ -39,23 +63,13 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
             let pos = input.find(search_str);
             if let Some(pos) = pos {
                 locations.push((pos, attr, pos + search_str.len()));
-                return;
+                break;
             }
         }
-    };
-    try_find("public_visibility");
-    try_find("input");
-    try_find("input_derive");
-    try_find("data");
-    try_find("on_init");
-    try_find("on_message");
-    try_find("tick_interval");
-    try_find("on_tick");
-    try_find("on_stop");
-    try_find("spawner");
-    try_find("spawner_return_type");
-    try_find("custom_code");
-    locations.sort_unstable();
+    }
+
+    // PART TWO
+    // Turn array of locations to array of values
 
     // attrs = {
     //     "input": "Ping ,"
@@ -64,36 +78,34 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
     // }
     let mut attrs: HashMap<&str, String> = HashMap::new();
 
-    // (start, name, start_without_name)
+    locations.sort_unstable();
+
+    // locations = [(start, attr name, start of content), ...]
     for i in 0..locations.len() {
         let value = if i == locations.len() - 1 {
-            &input[locations[i].2..] // Last segment
+            // We are parsing the last segment
+            &input[locations[i].2..]
         } else {
-            &input[locations[i].2..locations[i + 1].0] // Start of next segment means this one ends
+            // Start of the next segment is this one's ends
+            &input[locations[i].2..locations[i + 1].0]
         };
         attrs.insert(locations[i].1, value.to_string());
     }
 
     if debug {
-        dbg!(&attrs);
+        eprintln!("Parsed attributes:");
+        eprintln!("{:?}", &attrs);
     }
 
+    // PART THREE
     // Assign default values for missing optional supported attrs
-    attrs.entry("public_visibility").or_insert("".to_string());
-    attrs.entry("input").or_insert("".to_string());
-    attrs.entry("data").or_insert("".to_string());
-    attrs.entry("on_init").or_insert("".to_string());
-    attrs.entry("on_message").or_insert("".to_string());
-    attrs.entry("tick_interval").or_insert("100".to_string());
-    attrs.entry("on_tick").or_insert("".to_string());
-    attrs.entry("on_stop").or_insert("".to_string());
-    attrs
-        .entry("spawner")
-        .or_insert("std::thread::spawn".to_string());
-    attrs
-        .entry("spawner_return_type")
-        .or_insert("std::thread::JoinHandle<()>".to_string());
-    attrs.entry("custom_code").or_insert("".to_string());
+
+    for attr in &supported_attributes {
+        attrs.entry(attr.0).or_insert(attr.1.to_string());
+    }
+
+    // PART FOUR
+    // Generate code
 
     // Prepare strings used later
     let public_visibility = if attrs["public_visibility"].contains("true") {
@@ -101,7 +113,7 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
     } else {
         "".to_string()
     };
-    let input_derive = if attrs.contains_key("input_derive") {
+    let input_derive = if attrs["input_derive"].len() > 0 {
         format!("#[derive({})]", attrs["input_derive"])
     } else {
         "".to_string()
