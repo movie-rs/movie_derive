@@ -138,8 +138,10 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
             {input}
         }}
 
+        pub type Handle = movie::Handle<{spawner_return_type}, Input>;
+
         impl Actor {{
-            pub fn start(mut self) -> movie::Handle<{spawner_return_type}, Input>
+            pub fn start(mut self) -> Handle
             {{
                 let (tx_ota, rx_ota) = std::sync::mpsc::channel(); // owner-to-actor data
                 let (tx_kill, rx_kill) = std::sync::mpsc::channel(); // owner-to-actor stop requests
@@ -176,9 +178,6 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
                 }}
             }}
         }}
-
-        pub type Handle = movie::Handle<{spawner_return_type}, Input>;
-
         }}",
         // attrs
         name = attrs["name"],
