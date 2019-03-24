@@ -31,6 +31,7 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
     let supported_attributes = vec![
         // attr name, default value
         ("public_visibility", ""),
+        ("docs", ""),
         ("input", ""),
         ("input_derive", ""),
         ("data", ""),
@@ -122,6 +123,7 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
     // TODO: Consider rewriting to quote!()
     let output = format!(
         "
+        {docs}
         {public_visibility} mod {name} {{
         use super::*;
 
@@ -180,6 +182,7 @@ fn actor_internal(input: TokenStream, debug: bool) -> TokenStream {
         }}",
         // attrs
         name = attrs["name"],
+        docs = attrs["docs"],
         input = attrs["input"],
         data = attrs["data"],
         on_init = attrs["on_init"],
